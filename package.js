@@ -1,6 +1,6 @@
 Package.describe({
   name: 'abernix:standard-minifier-js',
-  version: '1.2.2',
+  version: '1.3.2',
   summary: 'Standard javascript minifiers used with Meteor apps by default.',
   documentation: 'README.md'
 });
@@ -8,7 +8,7 @@ Package.describe({
 Package.registerBuildPlugin({
   name: "minifyStdJS",
   use: [
-    'abernix:minifier-js@1.2.16'
+    'abernix:minifier-js@1.3.16'
   ],
   sources: [
     'plugin/minify-js.js'
