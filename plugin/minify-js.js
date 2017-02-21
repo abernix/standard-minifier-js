@@ -85,9 +85,8 @@ UglifyJSMinifier.prototype.processFilesForBundle = function (files, options) {
         }
       } catch (err) {
         var filePath = file.getPathInBundle();
-        if (filePath === "packages/modules.js") {
-          maybeThrowMinifyErrorBySourceFile(err, file);
-        }
+
+        maybeThrowMinifyErrorBySourceFile(err, file);
 
         err.message += " while minifying " + filePath;
         throw err;
