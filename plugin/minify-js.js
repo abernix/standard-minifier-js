@@ -38,17 +38,30 @@ UglifyJSMinifier.prototype.processFilesForBundle = function (files, options) {
     var parseError = minifierErrorRegex.exec(error.toString());
 
     if (parseError) {
-      var parseErrorContentIndex = parseError[1] - 1;
-
       var lineErrorMessage = parseError[0];
+      var lineErrorLineNumber = parseError[1];
+
+      var parseErrorContentIndex = lineErrorLineNumber - 1;
+
+      // Unlikely, since we have a multi-line fixed header in this file.
+      if (parseErrorContentIndex < 0) {
+        return;
+      }
+
       var lineContent = contents[parseErrorContentIndex];
-      var lineSrcLineParts = /^(.*)\s*\/\/ (\d+)$/.exec(lineContent);
+      var lineSrcLineParts = /^(.*?)(?:\s*\/\/ (\d+))?$/.exec(lineContent);
+
+      // The line didn't match at all?  Let's just not try.
+      if (!lineSrcLineParts) {
+        return;
+      }
+
       var lineSrcLineContent = lineSrcLineParts[1];
       var lineSrcLineNumber = lineSrcLineParts[2];
 
       for (var c = parseErrorContentIndex - 1; c >= 0; c--) {
         var sourceLine = contents[c];
-        if (/^\/\/\/{6}\/+$/.test(sourceLine)) {
+        if (/^\/\/\/{6,}$/.test(sourceLine)) {
           if (contents[c - 4] === sourceLine) {
             var parseErrorPath = contents[c - 2]
               .substring(3)
@@ -58,7 +71,7 @@ UglifyJSMinifier.prototype.processFilesForBundle = function (files, options) {
             var minError = new Error(
               "UglifyJS minification error: \n\n" +
               error.message + " at " + parseErrorPath +
-              " line " + lineSrcLineNumber + "\n\n" +
+              (lineSrcLineNumber ? " line " + lineSrcLineNumber + "\n\n" : "") +
               " within " + file.getPathInBundle() + " " +
               lineErrorMessage + ":\n\n" +
               lineSrcLineContent + "\n"
