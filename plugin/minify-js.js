@@ -1,14 +1,14 @@
 Plugin.registerMinifier({
-  extensions: ["js"],
-  archMatching: "web"
+  extensions: ['js'],
+  archMatching: 'web'
 }, function () {
-  var minifier = new UglifyJSMinifier();
+  var minifier = new MeteorBabelMinifier();
   return minifier;
 });
 
-function UglifyJSMinifier () {};
+function MeteorBabelMinifier () {};
 
-UglifyJSMinifier.prototype.processFilesForBundle = function (files, options) {
+MeteorBabelMinifier.prototype.processFilesForBundle = function(files, options) {
   var mode = options.minifyMode;
 
   // don't minify anything for development
@@ -17,68 +17,92 @@ UglifyJSMinifier.prototype.processFilesForBundle = function (files, options) {
       file.addJavaScript({
         data: file.getContentsAsBuffer(),
         sourceMap: file.getSourceMap(),
-        path: file.getPathInBundle()
+        path: file.getPathInBundle(),
       });
     });
     return;
   }
 
-  var minifyOptions = {
-    fromString: true,
-    compress: {
-      drop_debugger: false,
-      unused: false,
-      dead_code: false
-    }
-  };
-
   function maybeThrowMinifyErrorBySourceFile(error, file) {
+    var minifierErrorRegex = /^(.*?)\s?\((\d+):(\d+)\)$/;
+    var parseError = minifierErrorRegex.exec(error.message);
+
+    if (!parseError) {
+      // If we were unable to parse it, just let the usual error handling work.
+      return;
+    }
+
+    var lineErrorMessage = parseError[1];
+    var lineErrorLineNumber = parseError[2];
+
+    var parseErrorContentIndex = lineErrorLineNumber - 1;
+
+    // Unlikely, since we have a multi-line fixed header in this file.
+    if (parseErrorContentIndex < 0) {
+      return;
+    }
+
+    /*
+
+    What we're parsing looks like this:
+
+    /////////////////////////////////////////
+    //                                     //
+    // path/to/file.js                     //
+    //                                     //
+    /////////////////////////////////////////
+                                           // 1
+       var illegalECMAScript = true;       // 2
+                                           // 3
+    /////////////////////////////////////////
+
+    Btw, the above code is intentionally not newer ECMAScript so
+    we don't break ourselves.
+
+    */
+
     var contents = file.getContentsAsString().split(/\n/);
-    var minifierErrorRegex = /\(line: (\d+), col: (\d+), pos: (\d+)\)/;
-    var parseError = minifierErrorRegex.exec(error.toString());
+    var lineContent = contents[parseErrorContentIndex];
 
-    if (parseError) {
-      var lineErrorMessage = parseError[0];
-      var lineErrorLineNumber = parseError[1];
+    // Try to grab the line number, which sometimes doesn't exist on
+    // line, abnormally-long lines in a larger block.
+    var lineSrcLineParts = /^(.*?)(?:\s*\/\/ (\d+))?$/.exec(lineContent);
 
-      var parseErrorContentIndex = lineErrorLineNumber - 1;
+    // The line didn't match at all?  Let's just not try.
+    if (!lineSrcLineParts) {
+      return;
+    }
 
-      // Unlikely, since we have a multi-line fixed header in this file.
-      if (parseErrorContentIndex < 0) {
-        return;
-      }
+    var lineSrcLineContent = lineSrcLineParts[1];
+    var lineSrcLineNumber = lineSrcLineParts[2];
 
-      var lineContent = contents[parseErrorContentIndex];
-      var lineSrcLineParts = /^(.*?)(?:\s*\/\/ (\d+))?$/.exec(lineContent);
+    // Count backward from the failed line to find the filename.
+    for (var c = parseErrorContentIndex - 1; c >= 0; c--) {
+      var sourceLine = contents[c];
 
-      // The line didn't match at all?  Let's just not try.
-      if (!lineSrcLineParts) {
-        return;
-      }
+      // If the line is a boatload of slashes, we're in the right place.
+      if (/^\/\/\/{6,}$/.test(sourceLine)) {
 
-      var lineSrcLineContent = lineSrcLineParts[1];
-      var lineSrcLineNumber = lineSrcLineParts[2];
+        // If 4 lines back is the same exact line, we've found the framing.
+        if (contents[c - 4] === sourceLine) {
 
-      for (var c = parseErrorContentIndex - 1; c >= 0; c--) {
-        var sourceLine = contents[c];
-        if (/^\/\/\/{6,}$/.test(sourceLine)) {
-          if (contents[c - 4] === sourceLine) {
-            var parseErrorPath = contents[c - 2]
-              .substring(3)
-              .replace(/\s+\/\//, "")
-            ;
+          // So in that case, 2 lines back is the file path.
+          var parseErrorPath = contents[c - 2]
+            .substring(3)
+            .replace(/\s+\/\//, "");
 
-            var minError = new Error(
-              "UglifyJS minification error: \n\n" +
-              error.message + " at " + parseErrorPath +
-              (lineSrcLineNumber ? " line " + lineSrcLineNumber + "\n\n" : "") +
-              " within " + file.getPathInBundle() + " " +
-              lineErrorMessage + ":\n\n" +
-              lineSrcLineContent + "\n"
-            );
+          var minError = new Error(
+            "Babili minification error " +
+            "within " + file.getPathInBundle() + ":\n" +
+            parseErrorPath +
+            (lineSrcLineNumber ? ", line " + lineSrcLineNumber : "") + "\n" +
+            "\n" +
+            lineErrorMessage + ":\n" +
+            "\n" +
+            lineSrcLineContent + "\n"
+          );
 
-            throw minError;
-          }
+          throw minError;
         }
       }
     }
@@ -91,9 +115,11 @@ UglifyJSMinifier.prototype.processFilesForBundle = function (files, options) {
       allJs += file.getContentsAsString();
     } else {
       var minified;
+
       try {
-        minified = UglifyJSMinify(file.getContentsAsString(), minifyOptions);
-        if (! minified.code) {
+        minified = meteorJsMinify(file.getContentsAsString());
+
+        if (!(minified && typeof minified.code === "string")) {
           throw new Error();
         }
       } catch (err) {
