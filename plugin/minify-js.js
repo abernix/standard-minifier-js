@@ -1,3 +1,5 @@
+import { extractModuleSizesTree } from "./stats.js";
+
 Plugin.registerMinifier({
   extensions: ['js'],
   archMatching: 'web'
@@ -108,11 +110,15 @@ MeteorBabelMinifier.prototype.processFilesForBundle = function(files, options) {
     }
   }
 
-  var allJs = '';
-  files.forEach(function (file) {
+  const toBeAdded = {
+    data: "",
+    stats: Object.create(null)
+  };
+
+  files.forEach(file => {
     // Don't reminify *.min.js.
     if (/\.min\.js$/.test(file.getPathInBundle())) {
-      allJs += file.getContentsAsString();
+      toBeAdded.data += file.getContentsAsString();
     } else {
       var minified;
 
@@ -122,6 +128,7 @@ MeteorBabelMinifier.prototype.processFilesForBundle = function(files, options) {
         if (!(minified && typeof minified.code === "string")) {
           throw new Error();
         }
+
       } catch (err) {
         var filePath = file.getPathInBundle();
 
@@ -131,14 +138,24 @@ MeteorBabelMinifier.prototype.processFilesForBundle = function(files, options) {
         throw err;
       }
 
-      allJs += minified.code;
+      const tree = extractModuleSizesTree(minified.code);
+      if (tree) {
+        toBeAdded.stats[file.getPathInBundle()] =
+          [Buffer.byteLength(minified.code), tree];
+      } else {
+        toBeAdded.stats[file.getPathInBundle()] =
+          Buffer.byteLength(minified.code);
+      }
+
+      toBeAdded.data += minified.code;
     }
-    allJs += '\n\n';
+
+    toBeAdded.data += '\n\n';
 
     Plugin.nudge();
   });
 
   if (files.length) {
-    files[0].addJavaScript({ data: allJs });
+    files[0].addJavaScript(toBeAdded);
   }
 };
