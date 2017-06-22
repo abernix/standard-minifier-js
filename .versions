@@ -1,5 +1,5 @@
-abernix:minifier-js@2.1.0-beta.0
-abernix:standard-minifier-js@2.1.0-beta.0
+abernix:minifier-js@2.1.0
+abernix:standard-minifier-js@2.1.0
 babel-compiler@6.19.2
 babel-runtime@1.0.1
 ecmascript@0.8.0
